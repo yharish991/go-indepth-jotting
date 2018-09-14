@@ -188,6 +188,8 @@ func (mux *ServeMux) Handle(pattern string, handler Handler) {
 }
 ```
 
+![](img/serveMux.jpg)
+
 ### Process to match the handler for the given pattern
 
 - After registering the route, starting the web service also requires server monitoring.
@@ -351,6 +353,8 @@ func (mux *ServeMux) ServeHTTP(w ResponseWriter, r *Request) {
 	h.ServeHTTP(w, r)
 }
 ```
+
+we can call `h.ServeHTTP(w, r)` directly as type `h` already implemented this method.
 
 [src](https://golang.org/src/net/http/server.go?s=59784:59844#L2281)
 
