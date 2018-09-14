@@ -190,6 +190,200 @@ func (mux *ServeMux) Handle(pattern string, handler Handler) {
 
 ### Process to match the handler for the given pattern
 
+- After registering the route, starting the web service also requires server monitoring.
+- `http.ListenAndServer` method can be seen to create a Server object, and call the same name method of the `Server` type:
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L3002)
+
+```Go
+// ListenAndServe always returns a non-nil error.
+func ListenAndServe(addr string, handler Handler) error {
+	server := &Server{Addr: addr, Handler: handler}
+	return server.ListenAndServe()
+}
+```
+
+##### `Server` type
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L2445)
+
+```Go
+type Server struct {
+	Addr    string  // TCP address to listen on, ":http" if empty
+	Handler Handler // handler to invoke, http.DefaultServeMux if nil
+	......
+}
+```
+
+##### `ListenAndServe` method of receiver type `*Server`
+
+The `server.ListenAndServe()` method internally calls `net.Listen("tcp", addr)`, which internally calls `net.ListenTCP()` to create and return a listener `net.Listener`, such as ln;
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L2750)
+
+```Go
+func (srv *Server) ListenAndServe() error {
+	if srv.shuttingDown() {
+		return ErrServerClosed
+	}
+	addr := srv.Addr
+	if addr == "" {
+		addr = ":http"
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	return srv.Serve(tcpKeepAliveListener{ln.(*net.TCPListener)})
+}
+```
+
+Finally, the monitored TCP object is passed to the Serve method:
+
+#### `Serve` method of receiver type `*Server`
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L2795)
+
+Serve accepts incoming connections on the Listener l, creating a new service goroutine for each. The service goroutines read requests and then call `srv.Handler` to reply to them.
+
+Remember `Server` type was struct with a field Handler.
+
+```Go
+func (srv *Server) Serve(l net.Listener) error {
+	...
+	defer l.Close()
+
+	...
+	ctx := context.WithValue(baseCtx, ServerContextKey, srv)
+	for {
+		rw, e := l.Accept()
+		...
+		c := srv.newConn(rw)
+		c.setState(c.rwc, StateNew) // before Serve can return
+		go c.serve(ctx)
+	}
+}
+```
+
+It uses the newConn method to create the connection object.
+
+```Go
+// Create new connection from rwc.
+func (srv *Server) newConn(rwc net.Conn) *conn {
+	c := &conn{
+		server: srv,
+		rwc:    rwc,
+	}
+	if debugServerConnections {
+		c.rwc = newLoggingConn("server", c.rwc)
+	}
+	return c
+}
+```
+
+Finally, the connection request is processed using the goroutine.
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L1738)
+
+```Go
+// Serve a new connection.
+func (c *conn) serve(ctx context.Context) {
+	c.remoteAddr = c.rwc.RemoteAddr().String()
+	ctx = context.WithValue(ctx, LocalAddrContextKey, c.rwc.LocalAddr())
+	...
+
+	c.r = &connReader{conn: c}
+	c.bufr = newBufioReader(c.r)
+	c.bufw = newBufioWriterSize(checkConnErrorWriter{c}, 4<<10)
+
+	for {
+		w, err := c.readRequest(ctx)
+		...
+		serverHandler{c.server}.ServeHTTP(w, w.req)
+		...
+	}
+}
+```
+
+**The next step is to call the `serverHandler{c.server}.ServeHTTP(w, w.req)` method to process the request**
+
+#### `serverHandler` type
+
+```Go
+// serverHandler delegates to either the server's Handler or
+// DefaultServeMux and also handles "OPTIONS *" requests.
+type serverHandler struct {
+	srv *Server
+}
+```
+
+The serverHandler is an important structure. It has a field nearby, that is, the Server structure. It also implements the Handler interface method ServeHTTP, and does an important thing in the interface method to initialize the multiplexer route multiplexer. If the server object does not specify a Handler, the default DefaultServeMux is used as the route multiplexer. And call the ServeHTTP method that initializes the Handler.
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L2733)
+
+```Go
+func (sh serverHandler) ServeHTTP(rw ResponseWriter, req *Request) {
+	handler := sh.srv.Handler
+	if handler == nil {
+		handler = DefaultServeMux
+	}
+	if req.RequestURI == "*" && req.Method == "OPTIONS" {
+		handler = globalOptionsHandler{}
+	}
+	handler.ServeHTTP(rw, req)
+}
+```
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L2350)
+
+```Go
+// ServeHTTP dispatches the request to the handler whose
+// pattern most closely matches the request URL.
+func (mux *ServeMux) ServeHTTP(w ResponseWriter, r *Request) {
+	if r.RequestURI == "*" {
+		if r.ProtoAtLeast(1, 1) {
+			w.Header().Set("Connection", "close")
+		}
+		w.WriteHeader(StatusBadRequest)
+		return
+	}
+	h, _ := mux.Handler(r)
+	h.ServeHTTP(w, r)
+}
+```
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L2281)
+
+```Go
+// Handler returns the handler to use for the given request,
+func (mux *ServeMux) Handler(r *Request) (h Handler, pattern string) {
+	...
+	return mux.handler(host, r.URL.Path)
+}
+```
+
+[src](https://golang.org/src/net/http/server.go?s=59784:59844#L2331)
+
+```Go
+// handler is the main implementation of Handler.
+func (mux *ServeMux) handler(host, path string) (h Handler, pattern string) {
+	mux.mu.RLock()
+	defer mux.mu.RUnlock()
+
+	// Host-specific pattern takes precedence over generic ones
+	if mux.hosts {
+		h, pattern = mux.match(host + path)
+	}
+	if h == nil {
+		h, pattern = mux.match(path)
+	}
+	if h == nil {
+		h, pattern = NotFoundHandler(), ""
+	}
+	return
+}
+```
+
 [src](https://golang.org/src/net/http/server.go?s=72834:72921#L2218)
 
 Overview:
