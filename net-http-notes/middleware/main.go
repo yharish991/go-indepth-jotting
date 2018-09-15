@@ -28,7 +28,7 @@ func loggingMiddleWare(h http.Handler) http.Handler {
 // Any Type can also be used to make an http Handler
 // track the no of times this URL has been accessed.
 type noOfTimes struct {
-	h     http.Handler
+	next  http.Handler
 	count int
 }
 
@@ -37,13 +37,13 @@ func (t *noOfTimes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	t.count++
 	fmt.Printf("counter = %d\n", t.count)
 	fmt.Println("get", r.URL.Path, " from ", r.RemoteAddr)
-	t.h.ServeHTTP(w, r)
+	t.next.ServeHTTP(w, r)
 }
 
 func main() {
 	mux := http.NewServeMux()
 	mh1 := &message{"Hello world From Middleware- hanlder Type"}
-	mux.Handle("/", loggingMiddleWare(mh1))
-	mux.Handle("/count", &noOfTimes{h: mh1, count: 0})
-	log.Fatal(http.ListenAndServe(":3003", mux))
+	mux.Handle("/", mh1)
+	mux.Handle("/count", &noOfTimes{next: mh1, count: 0})
+	log.Fatal(http.ListenAndServe(":3003", loggingMiddleWare(mux)))
 }
