@@ -30,6 +30,14 @@ func userIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// middleware that writes Header in the Response
+func requestIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-request-id", "1234")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // accept an http.Handler as an argument, and return an http.Handler.
 // This makes it easy to chain middlewares
 func loggingMiddleWare(h http.Handler) http.Handler {
@@ -60,5 +68,6 @@ func main() {
 	mh1 := &message{"Hello world From Middleware- hanlder Type"}
 	mux.Handle("/", userIDMiddleware(mh1))
 	mux.Handle("/count", &noOfTimes{next: mh1, count: 0})
+	mux.Handle("/id", requestIDMiddleware(mh1))
 	log.Fatal(http.ListenAndServe(":3003", loggingMiddleWare(mux)))
 }
