@@ -12,7 +12,22 @@ type message struct {
 }
 
 func (m *message) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.Header)
 	fmt.Fprintf(w, m.text)
+}
+
+// middleware that modifes the request
+// https://godoc.org/net/http#Handler
+// Clearly Says
+// Except for reading the body, handlers should not modify the provided Request.
+// we want to set a USER ID header on every request, for func purpose
+func userIDMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r2 := new(http.Request)
+		*r2 = *r
+		r2.Header.Set("USER-ID", "1234567")
+		next.ServeHTTP(w, r2)
+	})
 }
 
 // accept an http.Handler as an argument, and return an http.Handler.
@@ -43,7 +58,7 @@ func (t *noOfTimes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func main() {
 	mux := http.NewServeMux()
 	mh1 := &message{"Hello world From Middleware- hanlder Type"}
-	mux.Handle("/", mh1)
+	mux.Handle("/", userIDMiddleware(mh1))
 	mux.Handle("/count", &noOfTimes{next: mh1, count: 0})
 	log.Fatal(http.ListenAndServe(":3003", loggingMiddleWare(mux)))
 }
