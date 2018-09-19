@@ -13,13 +13,14 @@ func main() {
 	go watch(ctx, "[2]")
 	go watch(ctx, "[3]")
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(1 * time.Second)
 	fmt.Println("Cacelling all goroutines")
 	cancel()
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 }
 
 func watch(ctx context.Context, name string) {
+	go watchInner(ctx, name)
 	for {
 		select {
 		case <-ctx.Done():
@@ -27,7 +28,37 @@ func watch(ctx context.Context, name string) {
 			return
 		default:
 			fmt.Println(name, "goroutine running")
-			time.Sleep(2 * time.Second)
+
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
+func watchInner(ctx context.Context, name string) {
+	dctx, _ := context.WithCancel(ctx)
+	go watchInnerDerivedSubContext(dctx, name)
+	// cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println(name, "Cancelled Inner")
+			return
+		default:
+			fmt.Println(name, "Inner Goroutine running")
+			time.Sleep(1 * time.Second)
+		}
+	}
+}
+
+func watchInnerDerivedSubContext(ctx context.Context, name string) {
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println(name, "Cancelled DerivedSubContext")
+			return
+		default:
+			fmt.Println(name, "DerivedSubContext Goroutine running")
+			time.Sleep(10 * time.Second)
 		}
 	}
 }
