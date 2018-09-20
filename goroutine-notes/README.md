@@ -77,3 +77,43 @@ Bit of `CSP`. - Communicating Sequential Processes
 In `Go` instead by directly communicating with the process we use `channel`.
 
 Key to `CSP` model is focus on the `channel` not the entity that sends the message, and this **passing of message is usually `synchronous`**
+
+```Go
+func consumer(stop <-chan bool) {
+	for {
+		select {
+		case <-stop:
+			fmt.Println("exit the consumer go routine")
+			return
+		default:
+			fmt.Println("Running the consumer go routine")
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
+}
+
+func main() {
+	stop := make(chan bool)
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func(stop <-chan bool) {
+			defer wg.Done()
+			consumer(stop)
+		}(stop)
+	}
+	waitForKill()
+	close(stop)
+	fmt.Println("Stopping all Jobs!")
+	wg.Wait()
+}
+
+func waitForKill() {
+	sign := make(chan os.Signal)
+	signal.Notify(sign, os.Interrupt)
+	signal.Notify(sign, syscall.SIGTERM)
+	// block and wait as reading channel is synchronous
+	// and blocking
+	<-sign
+}
+```
