@@ -117,3 +117,7 @@ func waitForKill() {
 	<-sign
 }
 ```
+
+### Channel
+
+1. `channel` is first-class citizen.
