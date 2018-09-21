@@ -63,6 +63,11 @@ func (t *noOfTimes) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	t.next.ServeHTTP(w, r)
 }
 
+// type logHandler func(w http.ResponseWriter, req *http.Request) (int, error)
+
+// func log(h http.Hander) http.Handler {
+// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// }
 func main() {
 	mux := http.NewServeMux()
 	mh1 := &message{"Hello world From Middleware- hanlder Type"}

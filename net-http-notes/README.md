@@ -99,7 +99,14 @@ func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *Re
 
 ### `http.HandlerFunc`
 
+- defines a func `type` called `http.HandlerFunc`
 - The HandlerFunc type is an adapter to allow the use of ordinary functions as HTTP handlers.
+
+```Go
+type HandlerFunc func(ResponseWriter, *Request)
+```
+
+which basically says that for a function to match this type it should have the same signature.
 
 [Doc](https://golang.org/pkg/net/http/#HandlerFunc)
 
@@ -108,6 +115,8 @@ func (mux *ServeMux) HandleFunc(pattern string, handler func(ResponseWriter, *Re
 ```Go
 func (f HandlerFunc) ServeHTTP(w ResponseWriter, r *Request)
 ```
+
+says that for a function to match this type it should have the same signature (e.g. ResponseWriter, \*Request).
 
 So Example handleFunc1, can also be written as.
 
