@@ -422,3 +422,52 @@ func main() {
 	lock: runtime.mutex {key: 0},}
 (dlv)
 ```
+
+```Go
+func main() {
+	c1 := make(chan int, 3)
+	c2 := make(chan int)
+	//c1 <- 2
+	// c2 <- 2
+	go goroutineA(c1, c2)
+	go goroutineC(c1, c2)
+	go goroutineD(c1, c2)
+	go goroutineE(c1, c2)
+	c2 <- 2
+	go goroutineB(c1, c2)
+
+	for {
+	}
+}
+```
+
+after first goroutine run.
+
+```s
+recvq: waitq<int> {
+		first: *(*sudog<int>)(0xc0000bc000),
+		last: *(*sudog<int>)(0xc0000bc000),},
+	sendq: waitq<int> {
+```
+
+after second run
+
+```s
+recvq: waitq<int> {
+		first: *(*sudog<int>)(0xc0000bc000),
+		last: *(*sudog<int>)(0xc000080000),},
+	sendq: waitq<int> {
+```
+
+```s
+recvq: waitq<int> {
+		first: *(*sudog<int>)(0xc0000bc000),
+		last: *(*sudog<int>)(0xc0000bc060),},
+	sendq: waitq<int> {
+```
+
+```s
+recvq: waitq<int> {
+		first: *(*sudog<int>)(0xc0000bc000),
+		last: *(*sudog<int>)(0xc000080060),},
+```
