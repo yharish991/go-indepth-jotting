@@ -358,3 +358,38 @@ if c.closed != 0 {
 ```
 
 **Send data to the close channel, directly panic.**
+
+### Sending Data Cases.
+
+1. A goroutine is blocked on the channel: the data is sent directly to the goroutine
+
+   ````Go
+   if sg := c.recvq.dequeue(); sg != nil {
+   			// Found a waiting receiver. We pass the value we want to send
+   			// directly to the receiver, bypassing the channel buffer (if any).
+   			send(c, sg, ep, func() { unlock(&c.lock) }, 3)
+   			return true
+   		}
+   		```
+   ````
+
+   Take the waiting goroutine from the `recvq` queue of the current channel and then call send
+
+   ```Go
+   func send(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
+   	...
+   	if sg.elem != nil {
+   		sendDirect(c.elemtype, sg, ep)
+   		sg.elem = nil
+   	}
+   	gp := sg.g
+   	unlockf()
+   	gp.param = unsafe.Pointer(sg)
+   	if sg.releasetime != 0 {
+   		sg.releasetime = cputicks()
+   	}
+   	goready(gp, skip+1)
+   }
+   ```
+
+   **The goroutine can be made runnable again by calling goready(gp)**
