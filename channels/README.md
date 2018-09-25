@@ -192,3 +192,169 @@ type sudog struct {
 ```
 
 `g` is currently blocked goroutines.
+
+## Send
+
+```Go
+// entry point for c <- x from compiled code
+//go:nosplit
+func chansend1(c *hchan, elem unsafe.Pointer) {
+	chansend(c, elem, true, getcallerpc())
+}
+
+/*
+ * generic single channel send/recv
+ * If block is not nil,
+ * then the protocol will not
+ * sleep but return if it could
+ * not complete.
+ *
+ * sleep can wake up with g.param == nil
+ * when a channel involved in the sleep has
+ * been closed.  it is easiest to loop and re-run
+ * the operation; we'll see that it's now closed.
+ */
+func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
+	if c == nil {
+		if !block {
+			return false
+		}
+		gopark(nil, nil, waitReasonChanSendNilChan, traceEvGoStop, 2)
+		throw("unreachable")
+	}
+
+	if debugChan {
+		print("chansend: chan=", c, "\n")
+	}
+
+	if raceenabled {
+		racereadpc(c.raceaddr(), callerpc, funcPC(chansend))
+	}
+
+	// Fast path: check for failed non-blocking operation without acquiring the lock.
+	//
+	// After observing that the channel is not closed, we observe that the channel is
+	// not ready for sending. Each of these observations is a single word-sized read
+	// (first c.closed and second c.recvq.first or c.qcount depending on kind of channel).
+	// Because a closed channel cannot transition from 'ready for sending' to
+	// 'not ready for sending', even if the channel is closed between the two observations,
+	// they imply a moment between the two when the channel was both not yet closed
+	// and not ready for sending. We behave as if we observed the channel at that moment,
+	// and report that the send cannot proceed.
+	//
+	// It is okay if the reads are reordered here: if we observe that the channel is not
+	// ready for sending and then observe that it is not closed, that implies that the
+	// channel wasn't closed during the first observation.
+	if !block && c.closed == 0 && ((c.dataqsiz == 0 && c.recvq.first == nil) ||
+		(c.dataqsiz > 0 && c.qcount == c.dataqsiz)) {
+		return false
+	}
+
+	var t0 int64
+	if blockprofilerate > 0 {
+		t0 = cputicks()
+	}
+
+	lock(&c.lock)
+
+	if c.closed != 0 {
+		unlock(&c.lock)
+		panic(plainError("send on closed channel"))
+	}
+
+	if sg := c.recvq.dequeue(); sg != nil {
+		// Found a waiting receiver. We pass the value we want to send
+		// directly to the receiver, bypassing the channel buffer (if any).
+		send(c, sg, ep, func() { unlock(&c.lock) }, 3)
+		return true
+	}
+
+	if c.qcount < c.dataqsiz {
+		// Space is available in the channel buffer. Enqueue the element to send.
+		qp := chanbuf(c, c.sendx)
+		if raceenabled {
+			raceacquire(qp)
+			racerelease(qp)
+		}
+		typedmemmove(c.elemtype, qp, ep)
+		c.sendx++
+		if c.sendx == c.dataqsiz {
+			c.sendx = 0
+		}
+		c.qcount++
+		unlock(&c.lock)
+		return true
+	}
+
+	if !block {
+		unlock(&c.lock)
+		return false
+	}
+
+	// Block on the channel. Some receiver will complete our operation for us.
+	gp := getg()
+	mysg := acquireSudog()
+	mysg.releasetime = 0
+	if t0 != 0 {
+		mysg.releasetime = -1
+	}
+	// No stack splits between assigning elem and enqueuing mysg
+	// on gp.waiting where copystack can find it.
+	mysg.elem = ep
+	mysg.waitlink = nil
+	mysg.g = gp
+	mysg.isSelect = false
+	mysg.c = c
+	gp.waiting = mysg
+	gp.param = nil
+	c.sendq.enqueue(mysg)
+	goparkunlock(&c.lock, waitReasonChanSend, traceEvGoBlockSend, 3)
+
+	// someone woke us up.
+	if mysg != gp.waiting {
+		throw("G waiting list is corrupted")
+	}
+	gp.waiting = nil
+	if gp.param == nil {
+		if c.closed == 0 {
+			throw("chansend: spurious wakeup")
+		}
+		panic(plainError("send on closed channel"))
+	}
+	gp.param = nil
+	if mysg.releasetime > 0 {
+		blockevent(mysg.releasetime-t0, 2)
+	}
+	mysg.c = nil
+	releaseSudog(mysg)
+	return true
+}
+```
+
+### sending on nil channel.
+
+```Go
+if c == nil {
+		...
+		gopark(nil, nil, waitReasonChanSendNilChan, traceEvGoStop, 2)
+		throw("unreachable")
+	}
+```
+
+**gopark** - `runtime/proc.go`
+Puts the current goroutine into a waiting state with reason.
+
+Number of reason to park the goroutines can be seen in file `runtime/runtime2.go`.
+
+**So goroutine that sends data to the nil channel will be removed from the runnable queue.**
+
+### sending on the closed channel.
+
+```Go
+if c.closed != 0 {
+		unlock(&c.lock)
+		panic(plainError("send on closed channel"))
+	}
+```
+
+**Send data to the close channel, directly panic.**
