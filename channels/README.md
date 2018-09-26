@@ -398,7 +398,7 @@ if c.closed != 0 {
     }
     ```
 
-    **Copy the data pointed to by the current ep pointer to SudoGthe elempointer area of ​​the extracted type element**
+    **Copy the data pointed to by the current ep pointer to SudoG the elempointer area of ​​the extracted type element**
     **SudoG releasetime set to the current system tick value**
     **The goroutine can be made runnable again by calling goready(gp)**
 
