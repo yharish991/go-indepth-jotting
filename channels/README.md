@@ -453,6 +453,18 @@ if c.closed != 0 {
     Create a new `sudog` object on the current stack and use the current g and ep to initialize.
     `acquireSudog` to put the current goroutine in the park state and then add that goroutine in the `sendq` of the channel.
 
+#### Summary of process send.
+
+1. lock the entire channel structure, (since locking is involved how does directly locking the shared variable is comparable to this approach ?)
+
+2. step 2 determines writes. Try `recvq` to take a waiting goroutine from the wait queue, then hand the element to be written directly to (`copy`) the goroutine, and then set this to the goroutine of the `element` (`suodg.elem`).
+
+3. Determine whether the buffer is full. If available, **copy** (`typedmemmove copies a value of type t to dst from src.`) the data from current goroutine to the
+
+_typedmemmove_ internally uses `memmove` - memmove() is used to copy a block of memory from a location to another.
+
+4. If `recvq` there is no waiting goroutine, then the element to be written is saved in the structure of the currently executing goroutine if not an buffered queue. and the current goroutine is enqueued at `sendq` and suspended, waiting for someone.
+
 ## Receive <-c
 
 ### Reading from nil channel
