@@ -1,5 +1,11 @@
 ## Chan struct
 
+Simply put, `channel` is the thing that helps goroutines communicates with each other. **In fact it is doing memory sharing between goroutines**
+
+**Don't communicate by sharing memory; share memory by communicating.**
+
+Channels allow you to pass references to data structures between goroutines. If you consider this as passing around ownership of the data (the ability to read and write it), they become a powerful and expressive synchronization mechanism.
+
 > Chan contains 4 types of operations: make, read, write, and close
 
 `c := make(chan int,2)`
@@ -361,35 +367,141 @@ if c.closed != 0 {
 
 ### Sending Data Cases.
 
-1. A goroutine is blocked on the channel: the data is sent directly to the goroutine
+1.  A goroutine is blocked on the channel: the data is sent directly to the goroutine
 
-   ````Go
-   if sg := c.recvq.dequeue(); sg != nil {
-   			// Found a waiting receiver. We pass the value we want to send
-   			// directly to the receiver, bypassing the channel buffer (if any).
-   			send(c, sg, ep, func() { unlock(&c.lock) }, 3)
-   			return true
-   		}
-   		```
-   ````
+    ````Go
+    if sg := c.recvq.dequeue(); sg != nil {
+    			// Found a waiting receiver. We pass the value we want to send
+    			// directly to the receiver, bypassing the channel buffer (if any).
+    			send(c, sg, ep, func() { unlock(&c.lock) }, 3)
+    			return true
+    		}
+    		```
+    ````
 
-   Take the waiting goroutine from the `recvq` queue of the current channel and then call send
+    Take the waiting goroutine from the `recvq` queue of the current channel and then call send
 
-   ```Go
-   func send(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
-   	...
-   	if sg.elem != nil {
-   		sendDirect(c.elemtype, sg, ep)
-   		sg.elem = nil
-   	}
-   	gp := sg.g
-   	unlockf()
-   	gp.param = unsafe.Pointer(sg)
-   	if sg.releasetime != 0 {
-   		sg.releasetime = cputicks()
-   	}
-   	goready(gp, skip+1)
-   }
-   ```
+    ```Go
+    func send(c *hchan, sg *sudog, ep unsafe.Pointer, unlockf func(), skip int) {
+    	...
+    	if sg.elem != nil {
+    		sendDirect(c.elemtype, sg, ep)
+    		sg.elem = nil
+    	}
+    	gp := sg.g
+    	unlockf()
+    	gp.param = unsafe.Pointer(sg)
+    	if sg.releasetime != 0 {
+    		sg.releasetime = cputicks()
+    	}
+    	goready(gp, skip+1)
+    }
+    ```
 
-   **The goroutine can be made runnable again by calling goready(gp)**
+    **Copy the data pointed to by the current ep pointer to SudoGthe elempointer area of ​​the extracted type element**
+    **SudoG releasetime set to the current system tick value**
+    **The goroutine can be made runnable again by calling goready(gp)**
+
+2.  There is currently space available for hchan.buf: put the data in the buffer.
+
+    ```Go
+    if c.qcount < c.dataqsiz {
+    	// Space is available in the channel buffer. Enqueue the element to send.
+    	qp := chanbuf(c, c.sendx)
+    	if raceenabled {
+    		raceacquire(qp)
+    		racerelease(qp)
+    	}
+    	typedmemmove(c.elemtype, qp, ep)
+    	c.sendx++
+    	if c.sendx == c.dataqsiz {
+    		c.sendx = 0
+    	}
+    	c.qcount++
+    	unlock(&c.lock)
+    	return true
+    }
+    ```
+
+    `chanbuf(c, i)` accesses the corresponding memory area.
+
+    Determine if hchan.buf has free space by comparing qcount and dataqsiz. **Enqueue the element by copying the area pointed to by the ep pointer to the ring buffer to send**, and adjust sendx and qcount.
+
+3.  The current hchan.buf is full: blocking the current goroutine.
+
+    ```Go
+    // Block on the channel. Some receiver will complete our operation for us.
+    gp := getg()
+    mysg := acquireSudog()
+    mysg.releasetime = 0
+    if t0 != 0 {
+    	mysg.releasetime = -1
+    }
+    // No stack splits between assigning elem and enqueuing mysg
+    // on gp.waiting where copystack can find it.
+    mysg.elem = ep
+    mysg.waitlink = nil
+    mysg.g = gp
+    mysg.isSelect = false
+    mysg.c = c
+    gp.waiting = mysg
+    gp.param = nil
+    c.sendq.enqueue(mysg)
+    goparkunlock(&c.lock, waitReasonChanSend, traceEvGoBlockSend, 3)
+    ```
+
+    Create a new `sudog` object on the current stack and use the current g and ep to initialize.
+    `acquireSudog` to put the current goroutine in the park state and then add that goroutine in the `sendq` of the channel.
+
+## Receive <-c
+
+### Reading from nil channel
+
+    ```Go
+    func chanrecv(c *hchan, ep unsafe.Pointer, block bool) (selected, received bool) {
+    if c == nil {
+        if !block {
+            return
+        }
+        gopark(nil, nil, "chan receive (nil chan)", traceEvGoStop, 2)
+        throw("unreachable")
+    }
+    ...
+    }
+    ```
+
+### Reading from closed channel
+
+```Go
+lock(&c.lock)
+
+if c.closed != 0 && c.qcount == 0 {
+if raceenabled {
+raceacquire(unsafe.Pointer(c))
+}
+unlock(&c.lock)
+if ep != nil {
+typedmemclr(c.elemtype, ep)
+}
+return true, false
+}
+```
+
+`c.qcount == 0` only when there is no data return `true (selected), false(received)`
+
+### Receiving and data process.
+
+1. Currently there is a send goroutine blocking on the channel, the buf is full
+
+```GO
+lock(&c.lock)
+
+if sg := c.sendq.dequeue(); sg != nil {
+    // Found a waiting sender. If buffer is size 0, receive value
+    // directly from sender. Otherwise, receive from head of queue
+    // and add sender's value to the tail of the queue (both map to
+    // the same buffer slot because the queue is full).
+    recv(c, sg, ep, func() { unlock(&c.lock) }, 3)
+    return true, true
+}
+```
