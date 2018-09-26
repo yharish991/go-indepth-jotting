@@ -459,7 +459,7 @@ if c.closed != 0 {
 
 2. step 2 determines writes. Try `recvq` to take a waiting goroutine from the wait queue, then hand the element to be written directly to (`copy`) the goroutine, and then set this to the goroutine of the `element` (`suodg.elem`).
 
-3. Determine whether the buffer is full. If available, **copy** (`typedmemmove copies a value of type t to dst from src.`) the data from current goroutine to the
+3. Determine whether the buffer is full. If available, **copy** (`typedmemmove copies a value of type t to dst from src.`) the data from current goroutine to the buffer.
 
 _typedmemmove_ internally uses `memmove` - memmove() is used to copy a block of memory from a location to another.
 
