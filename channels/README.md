@@ -525,3 +525,21 @@ if sg := c.sendq.dequeue(); sg != nil {
 **Important question to ask ourself what is the issue with Infinite channel implementation ?**
 
 _Don't communicate by sharing memory; share memory by communicating._ is not a is a silver bullet for all cases.
+
+### Side Notes.
+
+Multiplexing I/O on descriptors in `unix` via Polling I/O. Put `fd` in the non blocking mode, and process use `[edge|level] triggered mechanism` to ask kernel by means of a system call (`select` and `poll`) which `fd`s are capable of performing I/O.
+
+Unix `Select` - select determines the current operation by testing the file descriptor set one by one.
+
+timeout control - `time-sharing scheduling`
+
+_`Select` also support timeout_
+
+-> return values of `select` - one or more file descriptors are ready, then the return code is a positive integer.
+
+**`Select` - Multiplexing on mutiple channel.**
+
+-> any registered channel operation return and the select operation return, aslo can timeout.
+
+timeout control - cooperative
