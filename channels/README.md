@@ -597,7 +597,16 @@ const (
 
 `runtime/select.go`
 
-1. operations are mutually exclusive, so need to acquire the locks on all pending channels before
+1. operations are mutually exclusive, so need to acquire the locks on all pending channels before, determined through poll operation order and order of locking.
+
+```Go
+// generate permuted order
+	for i := 1; i < ncases; i++ {
+		j := fastrandn(uint32(i + 1))
+		pollorder[i] = pollorder[j]
+		pollorder[j] = uint16(i)
+	}
+```
 
 ```Go
 // lock all the channels involved in the select
@@ -608,6 +617,6 @@ const (
 
 3. If no channel currently responds and there is no default statement, current `g` must currently hang on the corresponding wait queue for all channels.
 
-4. Only one response channel can wake up parked `g`.
+4. Only one response channel can wake up parked `g`. `isSelect bool`
 
 5. the order of select operations does not necessarily follow the order declared in the program
