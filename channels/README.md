@@ -503,7 +503,7 @@ return true, false
 
 ### Receiving and data process.
 
-1. Currently there is a send goroutine blocking on the channel, the buf is full
+1. Currently there is a send goroutine blocking on the channel. Recv from there.
 
 ```GO
 lock(&c.lock)
@@ -517,3 +517,11 @@ if sg := c.sendq.dequeue(); sg != nil {
     return true, true
 }
 ```
+
+2. If not copy `data` and put the current goroutine in the `recvq` and park it.
+
+**Except for buffer case the reading and writing process here is actually in pairs**
+
+**Important question to ask ourself what is the issue with Infinite channel implementation ?**
+
+_Don't communicate by sharing memory; share memory by communicating._ is not a is a silver bullet for all cases.

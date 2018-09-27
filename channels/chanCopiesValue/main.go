@@ -10,7 +10,7 @@ type user struct {
 	age  int8
 }
 
-var u = user{name: "Jon Deo", age: 100}
+var u = user{name: "Ankur", age: 25}
 var g = &u
 
 func modifyUser(pu *user) {
@@ -27,7 +27,7 @@ func main() {
 	c <- g
 	fmt.Println(g)
 	// modify g
-	g = &user{name: "Ankur", age: 10}
+	g = &user{name: "Ankur Anand", age: 100}
 	go printUser(c)
 	go modifyUser(g)
 	time.Sleep(5 * time.Second)
