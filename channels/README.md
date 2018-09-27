@@ -543,3 +543,71 @@ _`Select` also support timeout_
 -> any registered channel operation return and the select operation return, aslo can timeout.
 
 timeout control - cooperative
+
+### Select.
+
+```Go
+ch := make(chan int, 5)
+
+	select {
+	case msg := <-ch:
+		fmt.Println("received message", msg)
+	default:
+		fmt.Println("no message received")
+	}
+```
+
+```Go
+type runtimeSelect struct {
+	dir selectDir
+	typ unsafe.Pointer // channel type (not used here)
+	ch  *hchan         // channel
+	val unsafe.Pointer // ptr to data (SendDir) or ptr to receive buffer (RecvDir)
+}
+```
+
+Go's parser encounters a select statement and translates it into a corresponding runtime library function call to implement its function.
+
+`/src/runtime/select.go`
+
+```Go
+type scase struct {
+	c           *hchan         // chan
+	elem        unsafe.Pointer // data element
+	kind        uint16
+	pc          uintptr // race pc (for race detector / msan)
+	releasetime int64
+}
+```
+
+`pc` is the return address of this case after success.
+
+`kind` Is the type of operation in the current case, can be `CaseRecv`, `CaseSend` and `CaseDefault`.
+
+```Go
+const (
+	_             selectDir = iota
+	selectSend              // case Chan <- Send
+	selectRecv              // case <-Chan:
+	selectDefault           // default
+)
+```
+
+**selectgo implements the select statement.**
+
+`runtime/select.go`
+
+1. operations are mutually exclusive, so need to acquire the locks on all pending channels before
+
+```Go
+// lock all the channels involved in the select
+	sellock(scases, lockorder)
+```
+
+2. The select statement can return as long as there is a channel response, without waiting for all channel responses.
+
+3. If no channel currently responds and there is no default statement, current `g` must currently hang on the corresponding wait queue for all channels.
+
+4. Only one response channel can wake up parked `g`.
+
+5. the order of select operations does not necessarily follow the order declared in the program
