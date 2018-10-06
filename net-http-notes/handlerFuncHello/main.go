@@ -11,6 +11,8 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello world From Go- HanldeFunc Type")
+		return
+		w.Write([]byte("Hello World"))
 	})
 	log.Fatal(http.ListenAndServe(":3002", mux))
 }

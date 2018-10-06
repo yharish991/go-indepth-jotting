@@ -278,6 +278,8 @@ func (srv *Server) Serve(l net.Listener) error {
 
 It uses the newConn method to create the connection object.
 
+> use srv.newConn(net.conn) to convert a tcp conn into an http.server
+
 ```Go
 // Create new connection from rwc.
 func (srv *Server) newConn(rwc net.Conn) *conn {
