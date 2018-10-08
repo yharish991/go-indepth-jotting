@@ -33,6 +33,11 @@ func main() {
 	//process is restarted and parent waits for its termination
 	pid := cmd.Process.Pid
 	fmt.Println("Restarting the Process", pid)
+
+	// get the contents of the register.
+	var regs unix.PtraceRegs
+	unix.PtraceGetRegs(pid, &regs)
+	fmt.Println(regs)
 	// target process to run to completion,
 	if err := unix.PtraceCont(pid, 0); err != nil {
 		log.Fatal(err)
