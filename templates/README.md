@@ -62,3 +62,7 @@ get the variable of the parent template
 ```
 {{template "navbar" .}}
 ```
+
+Each template is named by a string specified when it is created. Also, each template is associated with zero or more other templates that it may invoke by name; such associations are transitive and form a name space of templates. 
+
+So, a *Template always has a name, whether explicitly set by user calling New(name), or automatically assigned by ParseFiles or ParseGlob
